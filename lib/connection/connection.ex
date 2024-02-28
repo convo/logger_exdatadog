@@ -13,8 +13,8 @@ defmodule LoggerExdatadog.Connection do
   @connection_opts [active: false, mode: :binary, keepalive: true, packet: 0]
   @backoff_ms 500
 
-  def start_link(host, port, queue, id \\ 0, timeout \\ 1_000) do
-    Connection.start_link(__MODULE__, {host, port, queue, id, timeout})
+  def start_link(transport, host, port, queue, id \\ 0, timeout \\ 1_000) do
+    Connection.start_link(__MODULE__, {transport, host, port, queue, id, timeout})
   end
 
   @doc "Send message to datadog backend"
@@ -30,15 +30,15 @@ defmodule LoggerExdatadog.Connection do
     Connection.call(conn, {:configure, host, port})
   end
 
-  def init({host, port, queue, id, timeout}) do
+  def init({transport, host, port, queue, id, timeout}) do
     LoggerExdatadog.Connection.Worker.start_link(self(), queue)
 
-    state = %{id: id, host: host, port: port, timeout: timeout, sock: nil}
+    state = %{transport: transport, id: id, host: host, port: port, timeout: timeout, sock: nil}
     {:connect, :init, state}
   end
 
-  def connect(:init, %{id: id, sock: nil, host: host, port: port, timeout: timeout} = state) do
-    case :gen_tcp.connect(host, port, @connection_opts, timeout) do
+  def connect(:init, %{transport: transport, id: id, sock: nil, host: host, port: port, timeout: timeout} = state) do
+    case transport.connect(host, port, @connection_opts, timeout) do
       {:ok, sock} ->
         {:ok, %{state | sock: sock}}
 
@@ -48,8 +48,8 @@ defmodule LoggerExdatadog.Connection do
     end
   end
 
-  def connect(_info, %{sock: nil, host: host, port: port, timeout: timeout} = state) do
-    case :gen_tcp.connect(host, port, @connection_opts, timeout) do
+  def connect(_info, %{transport: transport, sock: nil, host: host, port: port, timeout: timeout} = state) do
+    case transport.connect(host, port, @connection_opts, timeout) do
       {:ok, sock} ->
         {:ok, %{state | sock: sock}}
 
@@ -58,9 +58,9 @@ defmodule LoggerExdatadog.Connection do
     end
   end
 
-  def disconnect(info, %{id: id, sock: sock, host: host, port: port} = state) do
+  def disconnect(info, %{transport: transport, id: id, sock: sock, host: host, port: port} = state) do
     if sock != nil do
-      :ok = :gen_tcp.close(sock)
+      :ok = transport.close(sock)
     end
 
     case info do

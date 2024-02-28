@@ -15,23 +15,23 @@ defmodule LoggerExdatadog.MixProject do
   end
 
   # Run "mix help compile.app" to learn about applications.
-  def application do
+  def application() do
     [
       extra_applications: [:logger]
     ]
   end
 
-  defp deps do
+  defp deps() do
     [
       {:connection, "~> 1.0"},
       {:jason, "~> 1.4", optional: true},
-      {:blocking_queue, "~> 1.3"},
+      {:blocking_queue, git: "https://github.com/convo/BlockingQueue.git", tag: "1.4.1", optional: true},
       {:ex_doc, ">= 0.0.0", only: :dev},
       {:credo, ">= 0.0.0", only: :dev}
     ]
   end
 
-  defp description do
+  defp description() do
     """
     Formats logs as JSON, forwards to DataDog via TCP or SSL using intake Api, or to console.
     """

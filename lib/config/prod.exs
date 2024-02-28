@@ -8,8 +8,11 @@ config :logger,
 
 config :logger, :datadog,
   level: :debug,
-  host: System.get_env("DATADOG_HOST") || "localhost",
-  port: System.get_env("DATADOG_PORT") || "4560",
+  mode: :network_only, # :network_only, :console_only, :both
+  api_token: "",
+  endpoint: "intake.logs.datadoghq.com",
+  port: "10514",
+  tls: false,
   fields: %{appid: "datadog-json"},
   workers: 2,
   buffer_size: 10_000

@@ -5,8 +5,10 @@ defmodule LoggerExdatadog.Network do
 
   @behaviour :gen_event
 
-  import Supervisor.Spec
-  alias LoggerExdatadog.Connection
+  alias LoggerExdatadog.{Connection, Formatter}
+
+  @datadog_endpoint "intake.logs.datadoghq.com"
+  @datadog_tcp_port 10514
 
   @doc false
   def init({__MODULE__, name}) do
@@ -52,9 +54,9 @@ defmodule LoggerExdatadog.Network do
   end
 
   defp log_event(level, msg, ts, md, state) do
-    event = LoggerExdatadog.Formatter.event(level, msg, ts, md, state)
+    event = Formatter.event(level, msg, ts, md, state)
 
-    case LoggerExdatadog.Formatter.json(event) do
+    case Formatter.json(event) do
       {:ok, log} ->
         send_log(log, state)
 
@@ -63,8 +65,8 @@ defmodule LoggerExdatadog.Network do
     end
   end
 
-  defp send_log(log, %{queue: queue}) do
-    BlockingQueue.push(queue, log <> "\n")
+  defp send_log(log, %{api_token: token, queue: queue}) do
+    BlockingQueue.push(queue, [token, " ", log, "\r", "\n"])
   end
 
   defp configure(name, opts) do
@@ -73,8 +75,11 @@ defmodule LoggerExdatadog.Network do
     Application.put_env(:logger, name, opts)
 
     level = Keyword.get(opts, :level) || :debug
-    host = opts |> Keyword.get(:host) |> env_var |> to_charlist
-    port = opts |> Keyword.get(:port) |> env_var |> to_int
+
+    api_token = opts |> Keyword.get(:api_token, "")
+    host = opts |> Keyword.get(:endpoint, @datadog_endpoint) |> env_var |> to_charlist
+    port = opts |> Keyword.get(:port, @datadog_tcp_port) |> env_var |> to_int
+    transport = transport(opts)
     fields = Keyword.get(opts, :fields) || %{}
     workers = Keyword.get(opts, :workers) || 2
     worker_pool = Keyword.get(opts, :worker_pool) || nil
@@ -98,10 +103,12 @@ defmodule LoggerExdatadog.Network do
     # Create new queue and worker pool
     {:ok, queue} = BlockingQueue.start_link(buffer_size)
 
-    children = 1..workers |> Enum.map(&tcp_worker(&1, host, port, queue))
+    children = 1..workers |> Enum.map(&network_worker(&1, transport, host, port, queue))
     {:ok, worker_pool} = Supervisor.start_link(children, strategy: :one_for_one)
 
     %{
+      api_token: api_token,
+      transport: transport,
       level: level,
       host: host,
       port: port,
@@ -114,14 +121,24 @@ defmodule LoggerExdatadog.Network do
     }
   end
 
+  defp network_worker(id, transport, host, port, queue) do
+    %{
+      id: id,
+      start: {Connection, :start_link, [transport, host, port, queue, id]}
+    }
+  end
+
+  defp transport(opts) do
+    case Keyword.get(opts, :tls, false) do
+      true -> :ssl
+      false -> :gen_tcp
+    end
+  end
+
   defp env_var({:system, var, default}), do: System.get_env(var) || default
   defp env_var({:system, var}), do: System.get_env(var)
   defp env_var(value), do: value
 
   defp to_int(val) when is_integer(val), do: val
   defp to_int(val), do: val |> Integer.parse() |> elem(0)
-
-  defp tcp_worker(id, host, port, queue) do
-    worker(LoggerExdatadog.Connection, [host, port, queue, id], id: id)
-  end
 end
