@@ -7,9 +7,9 @@ defmodule LoggerExdatadog.Formatter do
 
   @doc "Generate a log event from log data"
   def event(level, msg, ts, md, %{
-    fields: fields,
-    formatter: formatter}) do
-
+        fields: fields,
+        formatter: formatter
+      }) do
     fields
     |> format_fields(md, %{
       message: to_string(msg),

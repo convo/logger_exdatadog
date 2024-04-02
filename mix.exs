@@ -25,7 +25,8 @@ defmodule LoggerExdatadog.MixProject do
     [
       {:connection, "~> 1.0"},
       {:jason, "~> 1.4", optional: true},
-      {:blocking_queue, git: "https://github.com/convo/BlockingQueue.git", tag: "1.4.1", optional: true},
+      {:blocking_queue,
+       git: "https://github.com/convo/BlockingQueue.git", tag: "1.4.1", optional: true},
       {:ex_doc, ">= 0.0.0", only: :dev},
       {:credo, ">= 0.0.0", only: :dev}
     ]

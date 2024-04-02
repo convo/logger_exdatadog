@@ -37,7 +37,11 @@ defmodule LoggerExdatadog.Connection do
     {:connect, :init, state}
   end
 
-  def connect(:init, %{transport: transport, id: id, sock: nil, host: host, port: port, timeout: timeout} = state) do
+  def connect(
+        :init,
+        %{transport: transport, id: id, sock: nil, host: host, port: port, timeout: timeout} =
+          state
+      ) do
     case transport.connect(host, port, @connection_opts, timeout) do
       {:ok, sock} ->
         {:ok, %{state | sock: sock}}
@@ -48,7 +52,10 @@ defmodule LoggerExdatadog.Connection do
     end
   end
 
-  def connect(_info, %{transport: transport, sock: nil, host: host, port: port, timeout: timeout} = state) do
+  def connect(
+        _info,
+        %{transport: transport, sock: nil, host: host, port: port, timeout: timeout} = state
+      ) do
     case transport.connect(host, port, @connection_opts, timeout) do
       {:ok, sock} ->
         {:ok, %{state | sock: sock}}
@@ -58,7 +65,10 @@ defmodule LoggerExdatadog.Connection do
     end
   end
 
-  def disconnect(info, %{transport: transport, id: id, sock: sock, host: host, port: port} = state) do
+  def disconnect(
+        info,
+        %{transport: transport, id: id, sock: sock, host: host, port: port} = state
+      ) do
     if sock != nil do
       :ok = transport.close(sock)
     end
