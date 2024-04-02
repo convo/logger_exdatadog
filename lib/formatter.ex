@@ -3,16 +3,26 @@ defmodule LoggerExdatadog.Formatter do
   This module contains functions for generating and serializing logs events.
   """
 
+  @skipped_metadata_keys [:domain, :erl_level, :gl, :time]
+
   @doc "Generate a log event from log data"
-  def event(level, msg, ts, md, %{fields: fields, utc_log: utc_log, formatter: formatter}) do
+  def event(level, msg, ts, md, %{
+    fields: fields,
+    formatter: formatter}) do
+
     fields
     |> format_fields(md, %{
-      "@timestamp": timestamp(ts, utc_log),
-      level: level,
       message: to_string(msg),
-      module: md[:module],
-      function: md[:function],
-      line: md[:line]
+      logger: %{
+        thread_name: inspect(Map.get(md, :pid)),
+        method_name: method_name(md),
+        line: md[:line]
+      },
+      syslog: %{
+        hostname: node_hostname(),
+        severity: Atom.to_string(level),
+        timestamp: format_timestamp(ts)
+      }
     })
     |> formatter.()
   end
@@ -25,6 +35,7 @@ defmodule LoggerExdatadog.Formatter do
   def format_fields(fields, metadata, field_overrides) do
     metadata
     |> format_metadata()
+    |> skip_metadata_keys()
     |> Map.merge(fields)
     |> Map.merge(field_overrides)
   end
@@ -32,6 +43,11 @@ defmodule LoggerExdatadog.Formatter do
   defp format_metadata(metadata) do
     metadata
     |> Enum.into(%{})
+  end
+
+  defp skip_metadata_keys(metadata) do
+    metadata
+    |> Map.drop(@skipped_metadata_keys)
   end
 
   defp json_library() do
@@ -61,42 +77,25 @@ defmodule LoggerExdatadog.Formatter do
   end
 
   # Functions for generating timestamp
-  defp timestamp(ts, utc_log) do
-    datetime(ts) <> timezone(utc_log)
+  defp format_timestamp({date, time}) do
+    [format_date(date), ?T, format_time(time), ?Z]
+    |> IO.iodata_to_binary()
   end
 
-  defp datetime({{year, month, day}, {hour, min, sec, millis}}) do
-    {:ok, ndt} = NaiveDateTime.new(year, month, day, hour, min, sec, {millis * 1000, 3})
-    NaiveDateTime.to_iso8601(ndt)
+  defp format_time({hh, mi, ss, ms}) do
+    [pad2(hh), ?:, pad2(mi), ?:, pad2(ss), ?., pad3(ms)]
   end
 
-  defp timezone(true), do: "+00:00"
-  defp timezone(_), do: timezone()
-
-  defp timezone() do
-    offset = timezone_offset()
-    minute = offset |> abs() |> rem(3600) |> div(60)
-    hour = offset |> abs() |> div(3600)
-    sign(offset) <> zero_pad(hour, 2) <> ":" <> zero_pad(minute, 2)
+  defp format_date({yy, mm, dd}) do
+    [Integer.to_string(yy), ?-, pad2(mm), ?-, pad2(dd)]
   end
 
-  defp timezone_offset() do
-    t_utc = :calendar.universal_time()
-    t_local = :calendar.universal_time_to_local_time(t_utc)
+  defp pad2(int) when int < 10, do: [?0, Integer.to_string(int)]
+  defp pad2(int), do: Integer.to_string(int)
 
-    s_utc = :calendar.datetime_to_gregorian_seconds(t_utc)
-    s_local = :calendar.datetime_to_gregorian_seconds(t_local)
-
-    s_local - s_utc
-  end
-
-  defp sign(total) when total < 0, do: "-"
-  defp sign(_), do: "+"
-
-  defp zero_pad(val, count) do
-    num = Integer.to_string(val)
-    :binary.copy("0", count - byte_size(num)) <> num
-  end
+  defp pad3(int) when int < 10, do: [?0, ?0, Integer.to_string(int)]
+  defp pad3(int) when int < 100, do: [?0, Integer.to_string(int)]
+  defp pad3(int), do: Integer.to_string(int)
 
   # traverse data and stringify special Elixir/Erlang terms
   defp pre_encode(it) when is_pid(it), do: inspect(it)
@@ -127,4 +126,19 @@ defmodule LoggerExdatadog.Formatter do
   end
 
   defp pre_encode(it), do: it
+
+  defp node_hostname do
+    {:ok, hostname} = :inet.gethostname()
+    to_string(hostname)
+  end
+
+  defp method_name(metadata) do
+    function = Map.get(metadata, :function)
+    module = Map.get(metadata, :module)
+
+    format_function(module, function)
+  end
+
+  defp format_function(nil, function), do: function
+  defp format_function(module, function), do: "#{inspect(module)}.#{function}"
 end

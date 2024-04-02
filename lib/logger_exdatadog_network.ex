@@ -55,6 +55,7 @@ defmodule LoggerExdatadog.Network do
 
   defp log_event(level, msg, ts, md, state) do
     event = Formatter.event(level, msg, ts, md, state)
+    IO.puts("Formatted ExDataDog Event: #{inspect(event)}")
 
     case Formatter.json(event) do
       {:ok, log} ->
@@ -84,7 +85,6 @@ defmodule LoggerExdatadog.Network do
     workers = Keyword.get(opts, :workers) || 2
     worker_pool = Keyword.get(opts, :worker_pool) || nil
     buffer_size = Keyword.get(opts, :buffer_size) || 10_000
-    utc_log = Application.get_env(:logger, :utc_log, false)
 
     formatter =
       case LoggerExdatadog.Formatter.resolve_formatter_config(Keyword.get(opts, :formatter)) do
@@ -116,8 +116,7 @@ defmodule LoggerExdatadog.Network do
       name: name,
       queue: queue,
       worker_pool: worker_pool,
-      formatter: formatter,
-      utc_log: utc_log
+      formatter: formatter
     }
   end
 
