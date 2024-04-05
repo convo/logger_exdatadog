@@ -10,7 +10,16 @@ defmodule LoggerExdatadog.MixProject do
       build_embedded: Mix.env() == :prod,
       start_permanent: Mix.env() == :prod,
       consolidate_protocols: Mix.env() != :test,
-      deps: deps()
+      deps: deps(),
+      test_coverage: [
+        tool: ExCoveralls
+      ],
+      preferred_cli_env: [
+        coveralls: :test,
+        "coveralls.detail": :test,
+        "coveralls.post": :test,
+        "coveralls.html": :test
+      ]
     ]
   end
 
@@ -28,7 +37,8 @@ defmodule LoggerExdatadog.MixProject do
       {:blocking_queue,
        git: "https://github.com/convo/BlockingQueue.git", tag: "1.4.1", optional: true},
       {:ex_doc, ">= 0.0.0", only: :dev},
-      {:credo, ">= 0.0.0", only: :dev}
+      {:credo, ">= 0.0.0", only: :dev},
+      {:excoveralls, "~> 0.16.1", only: :test}
     ]
   end
 

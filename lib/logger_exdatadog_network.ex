@@ -53,11 +53,10 @@ defmodule LoggerExdatadog.Network do
     {:ok, state}
   end
 
-  defp log_event(level, msg, ts, md, state) do
+  defp log_event(level, msg, ts, md, %{json_library: json_lib} = state) do
     event = Formatter.event(level, msg, ts, md, state)
-    IO.puts("Formatted ExDataDog Event: #{inspect(event)}")
 
-    case Formatter.json(event) do
+    case Formatter.json(event, json_lib) do
       {:ok, log} ->
         send_log(log, state)
 
@@ -85,6 +84,7 @@ defmodule LoggerExdatadog.Network do
     workers = Keyword.get(opts, :workers) || 2
     worker_pool = Keyword.get(opts, :worker_pool) || nil
     buffer_size = Keyword.get(opts, :buffer_size) || 10_000
+    json_lib = Keyword.get(opts, :json_library, Jason)
 
     formatter =
       case LoggerExdatadog.Formatter.resolve_formatter_config(Keyword.get(opts, :formatter)) do
@@ -116,7 +116,8 @@ defmodule LoggerExdatadog.Network do
       name: name,
       queue: queue,
       worker_pool: worker_pool,
-      formatter: formatter
+      formatter: formatter,
+      json_library: json_lib
     }
   end
 

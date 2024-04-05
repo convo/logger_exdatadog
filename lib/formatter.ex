@@ -6,21 +6,23 @@ defmodule LoggerExdatadog.Formatter do
   @skipped_metadata_keys [:domain, :erl_level, :gl, :time]
 
   @doc "Generate a log event from log data"
-  def event(level, msg, ts, md, %{
+  def event(level, msg, ts, meta_data, %{
         fields: fields,
         formatter: formatter
       }) do
+    normalized_meta_data = normalize_metadata(meta_data)
+
     fields
-    |> format_fields(md, %{
+    |> format_fields(normalized_meta_data, %{
       message: to_string(msg),
       logger: %{
-        thread_name: inspect(Map.get(md, :pid)),
-        method_name: method_name(md),
-        line: md[:line]
+        thread_name: inspect(Map.get(normalized_meta_data, :pid)),
+        method_name: method_name(normalized_meta_data),
+        line: Map.get(normalized_meta_data, :line)
       },
       syslog: %{
         hostname: node_hostname(),
-        severity: Atom.to_string(level),
+        severity: level,
         timestamp: format_timestamp(ts)
       }
     })
@@ -28,14 +30,18 @@ defmodule LoggerExdatadog.Formatter do
   end
 
   @doc "Serialize a log event to a JSON string"
-  def json(event) do
-    event |> pre_encode |> json_library().encode()
+  def json(event, json_encoder \\ Jason) do
+    event |> pre_encode(json_encoder) |> json_encoder.encode()
   end
 
-  def format_fields(fields, metadata, field_overrides) do
+  defp normalize_metadata(metadata) do
     metadata
     |> format_metadata()
     |> skip_metadata_keys()
+  end
+
+  defp format_fields(fields, normalized_meta_data, field_overrides) do
+    normalized_meta_data
     |> Map.merge(fields)
     |> Map.merge(field_overrides)
   end
@@ -48,11 +54,6 @@ defmodule LoggerExdatadog.Formatter do
   defp skip_metadata_keys(metadata) do
     metadata
     |> Map.drop(@skipped_metadata_keys)
-  end
-
-  defp json_library() do
-    Application.get_env(:logger, :datadog)
-    |> Keyword.get(:json_library, Jason)
   end
 
   def resolve_formatter_config(formatter_spec, default_formatter \\ & &1) do
@@ -98,25 +99,32 @@ defmodule LoggerExdatadog.Formatter do
   defp pad3(int), do: Integer.to_string(int)
 
   # traverse data and stringify special Elixir/Erlang terms
-  defp pre_encode(it) when is_pid(it), do: inspect(it)
-  defp pre_encode(it) when is_integer(it), do: inspect(it)
-  defp pre_encode(it) when is_function(it), do: inspect(it)
-  defp pre_encode(it) when is_list(it), do: Enum.map(it, &pre_encode/1)
-  defp pre_encode(it) when is_tuple(it), do: pre_encode(Tuple.to_list(it))
+  defp pre_encode(it, _json_encoder) when is_pid(it), do: inspect(it)
+  defp pre_encode(it, _json_encoder) when is_integer(it), do: inspect(it)
+  defp pre_encode(it, _json_encoder) when is_function(it), do: inspect(it)
 
-  defp pre_encode(%module{} = it) do
+  defp pre_encode(it, json_encoder) when is_list(it),
+    do: Enum.map(it, &pre_encode(&1, json_encoder))
+
+  defp pre_encode(it, json_encoder) when is_tuple(it),
+    do: pre_encode(Tuple.to_list(it), json_encoder)
+
+  defp pre_encode(%module{} = it, json_encoder) do
     try do
-      :ok = Protocol.assert_impl!(Module.concat(json_library(), Encoder), module)
+      :ok = Protocol.assert_impl!(Module.concat(json_encoder, Encoder), module)
       it
     rescue
-      ArgumentError -> pre_encode(Map.from_struct(it))
+      ArgumentError -> pre_encode(Map.from_struct(it), json_encoder)
     end
   end
 
-  defp pre_encode(it) when is_map(it),
-    do: Enum.into(it, %{}, fn {k, v} -> {pre_encode(k), pre_encode(v)} end)
+  defp pre_encode(it, json_encoder) when is_map(it),
+    do:
+      Enum.into(it, %{}, fn {k, v} ->
+        {pre_encode(k, json_encoder), pre_encode(v, json_encoder)}
+      end)
 
-  defp pre_encode(it) when is_binary(it) do
+  defp pre_encode(it, _json_encoder) when is_binary(it) do
     it
     |> String.valid?()
     |> case do
@@ -125,7 +133,7 @@ defmodule LoggerExdatadog.Formatter do
     end
   end
 
-  defp pre_encode(it), do: it
+  defp pre_encode(it, _json_encoder), do: it
 
   defp node_hostname do
     {:ok, hostname} = :inet.gethostname()
