@@ -5,6 +5,8 @@ defmodule LoggerExdatadog.Console do
 
   @behaviour :gen_event
 
+  alias LoggerExdatadog.Formatter
+
   @doc false
   def init({__MODULE__, name}) do
     {:ok, configure(name, [])}
@@ -58,7 +60,7 @@ defmodule LoggerExdatadog.Console do
     utc_log = Application.get_env(:logger, :utc_log, false)
 
     formatter =
-      case LoggerExdatadog.Formatter.resolve_formatter_config(Keyword.get(opts, :formatter)) do
+      case Formatter.resolve_formatter_config(Keyword.get(opts, :formatter)) do
         {:ok, fun} ->
           fun
 
@@ -70,7 +72,7 @@ defmodule LoggerExdatadog.Console do
   end
 
   defp log_event(level, msg, ts, md, state) do
-    event = LoggerExdatadog.Formatter.event(level, msg, ts, md, state)
+    event = Formatter.event(level, msg, ts, md, state)
 
     case LoggerExdatadog.Formatter.json(event) do
       {:ok, log} ->

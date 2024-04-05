@@ -9,6 +9,7 @@ defmodule LoggerExdatadog.Connection do
   Buffers messages that failed to be sent for any reason, until a maximum buffer
   size is reached after which incoming messages are dropped.
   """
+  alias LoggerExdatadog.ConnectionWorker
 
   @connection_opts [active: false, mode: :binary, keepalive: true, packet: 0]
   @backoff_ms 500
@@ -17,6 +18,7 @@ defmodule LoggerExdatadog.Connection do
     Connection.start_link(__MODULE__, {transport, host, port, queue, id, timeout})
   end
 
+  @spec send(atom() | pid() | {atom(), any()} | {:via, atom(), any()}, any()) :: any()
   @doc "Send message to datadog backend"
   def send(conn, data, timeout \\ 5_000) do
     Connection.call(conn, {:send, data}, timeout)
@@ -31,7 +33,7 @@ defmodule LoggerExdatadog.Connection do
   end
 
   def init({transport, host, port, queue, id, timeout}) do
-    LoggerExdatadog.Connection.Worker.start_link(self(), queue)
+    ConnectionWorker.start_link(self(), queue)
 
     state = %{transport: transport, id: id, host: host, port: port, timeout: timeout, sock: nil}
     {:connect, :init, state}
@@ -86,8 +88,8 @@ defmodule LoggerExdatadog.Connection do
     {:reply, :ok, state}
   end
 
-  def handle_call({:send, data}, _from, %{id: id, sock: sock} = state) do
-    case :gen_tcp.send(sock, data) do
+  def handle_call({:send, data}, _from, %{id: id, sock: sock, transport: transport} = state) do
+    case transport.send(sock, data) do
       :ok ->
         {:reply, :ok, state}
 
@@ -108,9 +110,9 @@ defmodule LoggerExdatadog.Connection do
     {:disconnect, {:close, from}, %{state | host: host, port: port}}
   end
 
-  def terminate(_, %{sock: sock}) do
+  def terminate(_, %{sock: sock, transport: transport}) do
     if sock != nil do
-      :ok = :gen_tcp.close(sock)
+      :ok = transport.close(sock)
     end
   end
 
