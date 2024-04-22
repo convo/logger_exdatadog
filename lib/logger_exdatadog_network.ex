@@ -58,6 +58,7 @@ defmodule LoggerExdatadog.Network do
 
     case Formatter.json(event, json_lib) do
       {:ok, log} ->
+        io_put(log, state)
         send_log(log, state)
 
       {:error, reason} ->
@@ -68,6 +69,13 @@ defmodule LoggerExdatadog.Network do
   defp send_log(log, %{api_token: token, queue: queue}) do
     BlockingQueue.push(queue, [token, " ", log, "\r", "\n"])
   end
+
+  defp io_put(log, %{network_and_console: true} = _state) do
+    IO.puts(log)
+  end
+
+  defp io_put(_log, _state),
+    do: :ok
 
   defp configure(name, opts) do
     env = Application.get_env(:logger, name, [])
@@ -85,6 +93,7 @@ defmodule LoggerExdatadog.Network do
     worker_pool = Keyword.get(opts, :worker_pool) || nil
     buffer_size = Keyword.get(opts, :buffer_size) || 10_000
     json_lib = Keyword.get(opts, :json_library, Jason)
+    network_and_console = Keyword.get(opts, :network_and_console, true)
 
     formatter =
       case LoggerExdatadog.Formatter.resolve_formatter_config(Keyword.get(opts, :formatter)) do
@@ -117,7 +126,8 @@ defmodule LoggerExdatadog.Network do
       queue: queue,
       worker_pool: worker_pool,
       formatter: formatter,
-      json_library: json_lib
+      json_library: json_lib,
+      network_and_console: network_and_console
     }
   end
 
