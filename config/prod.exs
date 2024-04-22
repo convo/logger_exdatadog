@@ -8,8 +8,7 @@ config :logger,
 
 config :logger, :datadog,
   level: :debug,
-  # :network_only, :console_only, :both
-  mode: :network_only,
+  network_and_console: false,
   api_token: "",
   endpoint: "intake.logs.datadoghq.com",
   port: 10514,
